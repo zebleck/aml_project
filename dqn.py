@@ -38,7 +38,7 @@ class DQN(nn.Module):
         x = self.linear2(x)
         return x
 
-NUM_EPISODES = 5000
+NUM_EPISODES = 50000
 REPLAY_MEMORY_SIZE = 10000
 
 EPS_START = 0.9
@@ -62,6 +62,8 @@ class Agent:
 
         self.steps_done = 0
         self.episode_durations = []
+        
+        self.scores = []
 
     def select_action(self, state):
         eps_threshold = EPS_END + (EPS_START - EPS_END) * np.exp(-self.steps_done / EPS_DECAY)
@@ -147,7 +149,11 @@ class Agent:
                 self.optimize_model()
                 if game.finished:
                     self.episode_durations.append(t + 1)
-                    print(i_episode, game.score, t+1)
+                    self.scores.append(game.score)
+                    string = f"Episode: {i_episode}, Score: {game.score}"
+                    if len(self.scores) >= 100:
+                        string += f", Mean Score: {round(np.sum(self.scores[-100:])/100, 2)}"
+                    print("\r{}".format(string), end="")
                     break
             # Update the target network, copying all weights and biases in DQN
             if i_episode % TARGET_UPDATE == 0:
