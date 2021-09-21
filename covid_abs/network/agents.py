@@ -5,6 +5,8 @@ import numpy as np
 from covid_abs.agents import Agent, AgentType, InfectionSeverity, Status
 from covid_abs.common import *
 
+import random
+
 
 class EconomicalStatus(Enum):
     Active = 1
@@ -377,7 +379,7 @@ class Person(Agent):
 
             ix = self.age // 10 - 1 if self.age > 10 else 0
 
-            test_sub = np.random.random()
+            test_sub = random.random()
 
             if self.infected_status == InfectionSeverity.Asymptomatic:
                 if age_hospitalization_probs[ix] > test_sub:
@@ -400,7 +402,7 @@ class Person(Agent):
                         else:
                             self.environment.government.cash(-self.expenses)
 
-            death_test = np.random.random()
+            death_test = random.random()
             if age_death_probs[ix] > death_test:
                 self.status = Status.Death
                 self.infected_status = InfectionSeverity.Asymptomatic

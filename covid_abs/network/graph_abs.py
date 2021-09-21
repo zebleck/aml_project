@@ -8,6 +8,8 @@ from covid_abs.agents import *
 from covid_abs.network.agents import EconomicalStatus, Business, House, Person
 from covid_abs.network.util import new_day, work_day, new_month, bed_time, work_time, lunch_time, free_time
 
+import random
+
 @njit
 def calc_contacts(population_size, x, y, isdead, contagion_distance):
     contacts = []
@@ -296,7 +298,7 @@ class GraphSimulation(Simulation):
             up = np.random.randint(-1, 1)
             if agent2.infected_time >= self.incubation_time + low \
                     and agent2.infected_time <= self.contagion_time + up:
-                contagion_test = np.random.random()
+                contagion_test = random.random()
                 #agent1.infection_status = InfectionSeverity.Exposed
                 if contagion_test <= self.contagion_rate:
                     agent1.status = Status.Infected

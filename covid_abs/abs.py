@@ -6,6 +6,7 @@ from covid_abs.agents import Status, InfectionSeverity, Agent
 from covid_abs.common import *
 import numpy as np
 
+import random
 from numba import njit
 
 @njit
@@ -150,7 +151,7 @@ class Simulation(object):
         """
 
         if agent1.status == Status.Susceptible and agent2.status == Status.Infected:
-            contagion_test = np.random.random()
+            contagion_test = random.random()
             agent1.infection_status = InfectionSeverity.Exposed
             if contagion_test <= self.contagion_rate:
                 agent1.status = Status.Infected
@@ -206,7 +207,7 @@ class Simulation(object):
 
             indice = agent.age // 10 - 1 if agent.age > 10 else 0
 
-            teste_sub = np.random.random()
+            teste_sub = random.random()
 
             if agent.infected_status == InfectionSeverity.Asymptomatic:
                 if age_hospitalization_probs[indice] > teste_sub:
@@ -219,7 +220,7 @@ class Simulation(object):
                         agent.status = Status.Death
                         agent.infected_status = InfectionSeverity.Asymptomatic
 
-            death_test = np.random.random()
+            death_test = random.random()
             if age_death_probs[indice] > death_test:
                 agent.status = Status.Death
                 agent.infected_status = InfectionSeverity.Asymptomatic
