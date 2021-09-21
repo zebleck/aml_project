@@ -1,6 +1,6 @@
 import numpy as np
 
-N = 2
+N = 4
 FREE = 0
 SNAKE_HEAD = 1
 SNAKE_SEGMENT = 2
