@@ -125,7 +125,7 @@ class Business(Agent):
                 labor += self.demand(person)
             tax = self.taxes()
 
-            if 2 * (labor + tax) < self.incomes:
+            if 2 * (labor + tax) < self.incomes and len(self.environment.get_unemployed()) > 0:
                 unemployed = self.environment.get_unemployed()
                 ix = np.random.randint(0, len(unemployed))
                 self.hire(unemployed[ix])

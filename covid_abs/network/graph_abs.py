@@ -44,6 +44,9 @@ class GraphSimulation(Simulation):
         self.contagion_time = kwargs.get('contagion_time', 10)
         self.recovering_time = kwargs.get('recovering_time', 20)
 
+    def terminated(self):
+        return self.statistics['Infected'] == 0
+
     def register_callback(self, event, action):
         self.callbacks[event] = action
 
