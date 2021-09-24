@@ -52,7 +52,7 @@ NUM_ACTIONS = 2
 TARGET_UPDATE = 1000
 
 BATCH_SIZE = 32
-HIDDEN_LAYER_SIZE = 64
+HIDDEN_LAYER_SIZE = 8
 GAMMA = .97
 
 class Agent:
@@ -62,7 +62,7 @@ class Agent:
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.target_net.eval()
 
-        self.optimizer = optim.SGD(self.policy_net.parameters(), lr=.01)
+        self.optimizer = optim.SGD(self.policy_net.parameters(), lr=.1)
         self.memory = ReplayMemory(REPLAY_MEMORY_SIZE)
 
         self.steps_done = 0
@@ -136,12 +136,17 @@ class Agent:
             lockdowns = []
             reward_total = 0
 
+            action_length = 0
+            action_max_length = 500
             for t in range(1, NUM_STEPS+1):
 
                 # Select and perform an action
-                action_idx = self.select_action(state)
+                if action_length % action_max_length == 0:
+                    action_idx = self.select_action(state)
+                    #action_idx = int(round(np.random.random() < .75))
+                action_length += 1
+
                 #action_idx = 1
-                action_idx = int(round(np.random.random() < .75))
                 lockdowns.append(action_idx)
                 action = ["do_nothing", "lockdown"][action_idx]
                 sim.execute(action)
@@ -150,8 +155,8 @@ class Agent:
                 next_stats = sim.get_statistics(kind='info')
                 next_state = torch.tensor([next_stats["Infected"], next_stats["Susceptible"]], dtype=torch.float)
                 new_infected_count = sim.get_statistics(kind='info')["Infected"]
-                reward = torch.tensor([-new_infected_count/t], dtype=torch.float)
-                reward_total += -new_infected_count/t
+                reward = torch.tensor([-new_infected_count], dtype=torch.float)
+                reward_total += -new_infected_count
                 max_r = max(max_r, new_infected_count/infected_count)
 
                 # Store the transition in memory
@@ -167,7 +172,8 @@ class Agent:
             self.scores.append(max_r)
             self.lockdowns.extend(lockdowns)
             susceptible_count = sim.get_statistics(kind='info')["Susceptible"]
-            string = f"Episode: {i_episode}, Susceptible: {susceptible_count}, R_max: {round(max_r, 2)}, eps_t: {round(max(EPS_START-self.steps_done*EPS_DECAY, EPS_END), 2)}, rewards_total: {reward_total}"
+            string = f"Episode: {i_episode}, Susceptible: {susceptible_count}, R_max: {round(max_r, 2)}, eps_t: {round(max(EPS_START-self.steps_done*EPS_DECAY, EPS_END), 2)}, rewards_total: {round(reward_total, 2)}"
+            #string += f" Lockdown Ratio: {np.sum(lockdowns)/len(lockdowns)}"
             if len(self.lockdowns) >= 50*NUM_STEPS:
                 string += f", Lockdown Ratio: {round(np.sum(self.lockdowns[-50*NUM_STEPS:]) / (50*NUM_STEPS), 2)}           "
             print("\r{}".format(string), end="")
