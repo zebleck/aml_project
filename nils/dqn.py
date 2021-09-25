@@ -2,6 +2,7 @@ import sys
 sys.path.append("covid_abs")
 
 from covid_abs.run_simulation import get_simulation
+from dummy_simulation import DummySimulation
 
 from collections import namedtuple, deque
 from itertools import count
@@ -41,7 +42,7 @@ class DQN(nn.Module):
         x = self.linear2(x)
         return x
 
-NUM_EPISODES = 1000
+NUM_EPISODES = 10000
 NUM_STEPS = 1000
 REPLAY_MEMORY_SIZE = 50000
 
@@ -127,19 +128,23 @@ class Agent:
     def train_model(self):
         for i_episode in range(NUM_EPISODES):
             # Initialize the environment and state
-            sim = get_simulation()
-            stats = sim.get_statistics(kind='info')
-            state = torch.tensor([stats["Infected"], stats["Susceptible"]], dtype=torch.float)
+            # sim = get_simulation()
+            # stats = sim.get_statistics(kind='info')
+            # state = torch.tensor([stats["Infected"], stats["Susceptible"]], dtype=torch.float)
+            sim = DummySimulation()
+            state = sim.update(action="normal")
+            state = torch.tensor(state, dtype=torch.float)
 
-            infected_count = sim.get_statistics(kind='info')["Infected"]
+            infected_count = state[0]
+            # infected_count = sim.get_statistics(kind='info')["Infected"]
             max_r = 0
             lockdowns = []
             reward_total = 0
 
             action_length = 0
-            action_max_length = 500
-            for t in range(1, NUM_STEPS+1):
+            action_max_length = NUM_STEPS
 
+            for t in range(1, NUM_STEPS):
                 # Select and perform an action
                 if action_length % action_max_length == 0:
                     action_idx = self.select_action(state)
@@ -149,12 +154,15 @@ class Agent:
                 #action_idx = 1
                 lockdowns.append(action_idx)
                 action = ["do_nothing", "lockdown"][action_idx]
-                sim.execute(action)
+                # sim.execute(action)
                 self.steps_done += 1
 
-                next_stats = sim.get_statistics(kind='info')
-                next_state = torch.tensor([next_stats["Infected"], next_stats["Susceptible"]], dtype=torch.float)
-                new_infected_count = sim.get_statistics(kind='info')["Infected"]
+                # next_stats = sim.get_statistics(kind='info')
+                # next_state = torch.tensor([next_stats["Infected"], next_stats["Susceptible"]], dtype=torch.float)
+                # new_infected_count = sim.get_statistics(kind='info')["Infected"]
+                next_state = sim.update(action)
+                new_infected_count = next_state[0]
+                next_state = torch.tensor(next_state, dtype=torch.float)
                 reward = torch.tensor([-new_infected_count], dtype=torch.float)
                 reward_total += -new_infected_count
                 max_r = max(max_r, new_infected_count/infected_count)
@@ -171,7 +179,7 @@ class Agent:
 
             self.scores.append(max_r)
             self.lockdowns.extend(lockdowns)
-            susceptible_count = sim.get_statistics(kind='info')["Susceptible"]
+            susceptible_count = round(float(state[1]), 2)
             string = f"Episode: {i_episode}, Susceptible: {susceptible_count}, R_max: {round(max_r, 2)}, eps_t: {round(max(EPS_START-self.steps_done*EPS_DECAY, EPS_END), 2)}, rewards_total: {round(reward_total, 2)}"
             #string += f" Lockdown Ratio: {np.sum(lockdowns)/len(lockdowns)}"
             if len(self.lockdowns) >= 50*NUM_STEPS:
