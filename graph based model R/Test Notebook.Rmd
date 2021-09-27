@@ -1,0 +1,305 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Execute chunks by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+## Playing around
+
+Testing outbreak_model method and its returned case_data object.
+
+```{r}
+
+library(covidhm, quietly=TRUE)
+
+get_infected <- function(day, do_plot=TRUE) {
+
+  #Load association matrices
+  load("data-raw/am_list.RData")
+  
+  #First item in the list is data across all days
+  am <- am_list[[1]]
+  
+  net1 = format_network(am)
+  
+  # add weekly = false for detailed data
+  use.df <- outbreak_model(net = net1, num.initial.cases = 1, prop.ascertain = 1, cap_max_days = day, R = 0.8, presymrate = 0.0,
+              delay_shape = 1,delay_scale = 1.4,prop.asym = 0.0, quarantine = TRUE, isolation = TRUE, tracing = TRUE, secondary = TRUE,
+              outside = 0.000, testing = FALSE, test_neg = 0.1, weekly=FALSE)
+  
+  am.layout = NULL
+  
+  range.use<-function(x,min.use,max.use){ (x - min(x,na.rm=T))/(max(x,na.rm=T)-min(x,na.rm=T)) * (max.use - min.use) + min.use } #define for later
+  
+  #arrange data:
+  use.df<-use.df[order(use.df$caseid),]
+  use.df$v<-use.df$caseid
+  use.df$degree<-colSums(am>0)
+  use.df$isolated_time[is.infinite(use.df$isolated_time)]<-day+100 #to avoid infinite values
+  use.df$release_time[is.infinite(use.df$release_time)]<-day+100 #to avoid infinite values
+  
+  #make the needed igraph object from the association matrix
+  am.i<-graph_from_adjacency_matrix(am,"undirected",weighted=T,diag=F)
+  
+  #now, if a layout isn't given in the function, generate the circular ones wanted here:
+  if(is.null(am.layout)){
+    am.lay<-layout_nicely(am.i)
+    circlay<-T
+    if(circlay==T){
+      #making circular
+      ps<-nrow(am.lay)
+      dim.tl<-ceiling(sqrt(ps))*2 #needs *2 just to make sure we have enough points
+      #grid.lay<-expand.grid(floor(-dim.tl/2):ceiling(dim.tl/2),((floor(-dim.tl/2))-0.5):(ceiling((dim.tl/2))+0.5))
+      xpoints1<-floor(-dim.tl/2):ceiling(dim.tl/2)
+      xpoints2<-xpoints1+0.5
+      ypoints1<-xpoints1
+      ypoints2<-xpoints2
+      grid.lay1<-expand.grid(xpoints2,ypoints1)
+      grid.lay2<-expand.grid(xpoints1,ypoints2)
+      grid.lay3<-expand.grid(xpoints1,ypoints1)
+      grid.lay4<-expand.grid(xpoints2,ypoints2)
+      grid.lay<-rbind(grid.lay1,grid.lay2,grid.lay3,grid.lay4)
+      grid.lay[,1]<-jitter(grid.lay[,1],1)
+      grid.lay[,2]<-jitter(grid.lay[,2],1)
+      euc.dist <- function(x1, x2) sqrt(sum((x1 - x2) ^ 2))
+      grid.lay[,3]<-apply(grid.lay,1,function(a)euc.dist(matrix(c(mean(grid.lay[,1]),mean(grid.lay[,2])),1,2),a))
+      max.dist<-grid.lay[,3][((1:length(unique(grid.lay[,3])))[match(grid.lay[,3],sort(unique(grid.lay[,3])))])==ps]
+      g.lay.c<-grid.lay[grid.lay[,3]<=max.dist,]
+      g.lay.c[,1]<-scale(g.lay.c[,1])[,1]
+      g.lay.c[,2]<-scale(g.lay.c[,2])[,1]
+      am.lay[,1]<-scale(am.lay[,1])[,1]
+      am.lay[,2]<-scale(am.lay[,2])[,1]
+      distances <- rdist(am.lay[,1:2],g.lay.c[,1:2])
+      sol <- solve_LSAP(t(distances))
+      am.lay[as.numeric(sol),1:2]<-as.matrix(g.lay.c[,1:2])
+    }####finished making circular
+  } #finished making am.lay if layout null
+  if(!is.null(am.layout)){am.lay<-am.layout}
+  
+  #standardise am.lay into desired range
+  range.scale<-c(0,2)
+  am.lay<-apply(am.lay,2,function(a)range.use(a,min(range.scale),max(range.scale)))
+  #finished providing layout
+  
+  
+  #set time information from the given day periods:
+  max.period<-0:day
+  
+  
+  #start getting plot info
+  #These could be integrated within the loop but kept seperate for now to allow comparisons across time periods in needed
+  #infected = node colour (grey=not yet vs red=yes)
+  use.df$infected.t1<-use.df$exposure%in%max.period
+  
+  #Recovered = node shading (red=no vs pinky red=yes)
+  use.df$recovered.t1<-round(use.df$recovery_time)%in%max.period
+  
+  
+  #isolated = node square and outlined - need to make this list like or something
+  use.df$isolated.t1<-(round(use.df$isolated_time)<=day) & (round(use.df$release_time)>day) |
+    (round(use.df$quarantine_time)<=day) & (round(use.df$release_time)>day)
+  
+  #released = node crectangle without outline
+  use.df$released.t1<-round(use.df$release_time)<=day
+  
+  
+  #make infection lists
+  use.inf.el<-use.df[!is.na(use.df$infector),c("infector","v","infected.t1")]
+  
+  use.inf.el$x0<-am.lay[use.inf.el$infector,1]
+  use.inf.el$y0<-am.lay[use.inf.el$infector,2]
+  use.inf.el$x1<-am.lay[use.inf.el$v,1]
+  use.inf.el$y1<-am.lay[use.inf.el$v,2]
+  #arrows of infection:
+  use.inf.el.use<-use.inf.el[use.inf.el$infected.t1,]
+  
+  if(do_plot==TRUE) {
+  
+    #Plotting information from here
+    makeTrans<-function(..., alpha=0.5) {
+      if(alpha<0 | alpha>1) stop("alpha must be between 0 and 1")
+      alpha = floor(255*alpha)
+      newColor = col2rgb(col=unlist(list(...)), alpha=FALSE)
+      .makeTrans = function(col, alpha) {
+        rgb(red=col[1], green=col[2], blue=col[3], alpha=alpha, maxColorValue=255)}
+      newColor = apply(newColor, 2, .makeTrans, alpha=alpha)
+      return(newColor)}
+    
+    #edge info
+    edgew<-E(am.i)$weight
+    edgew<-range.use(edgew,0.5,1.5)
+    edge.cols<-makeTrans("deepskyblue1",alpha=0.7)
+    
+    #make size of nodes
+    ndeg<-colSums(am>0)
+    vert.sizes<-range.use(rank(ndeg),2,6)
+    vert.sizes<-vert.sizes+0
+    
+    #make vert colours
+    vert.bg<-rep('darkgrey',ncol(am))
+    vert.bg[use.df$infected.t1]<-"indianred1"
+    vert.bg[use.df$recovered.t1]<-"pink"
+    vert.bg<-makeTrans(vert.bg,alpha=0.7)
+    
+    vert.outline<-makeTrans(rep('darkgrey',ncol(am)),alpha=0.7)
+    vert.outline[use.df$infected.t1]<-"indianred1"
+    vert.outline[use.df$recovered.t1]<-"pink"
+    vert.outline[use.df$isolated.t1]<-"black"
+    
+    vert.shapes<-rep("circle",ncol(am))
+    vert.shapes[use.df$isolated.t1]<-"square"
+    
+    vert.labels<-rep(NA,ncol(am))
+    vert.labels.cols<-"deepskyblue1";vert.labels.sizes<-1.5
+    
+    
+    #Plotting
+    plot.igraph(am.i,layout=am.lay,rescale=F,edge.width=edgew,edge.curved=T,
+                edge.color=edge.cols,vertex.label=vert.labels,
+                vertex.label.color=vert.labels.cols,
+                vertex.label.cex=vert.labels.sizes,
+                vertex.size=vert.sizes,vertex.color=vert.bg,
+                vertex.frame.color=vert.outline,vertex.shape=vert.shapes,
+                xlim=range.scale,ylim=range.scale)
+    
+      #infection arrows:
+    if(day > 1 && nrow(use.inf.el.use) >= 1)
+    {
+      apply(use.inf.el.use,1,function(a){curvedarrow(a[c("x0","y0")],a[c("x1","y1")],lwd=0.8,lty=1,
+                                                     lcol="firebrick3",arr.col="firebrick3",arr.pos=0.94,curve=0.3,dr=0.01,endhead = T,
+                                                     segment = c(0, 1),arr.type="curved",arr.length=0.25)})
+    }
+  
+  }
+  
+  return(use.inf.el)
+}
+
+scenarios = vector()
+for(i in 1:5) {
+  scenarios <- append(scenarios, get_infected(30, do_plot=FALSE))
+}
+```
+
+```{r}
+library(networkD3)
+library(DiagrammeR)
+library(data.tree)
+library(rpart.plot)
+
+populate_tree <- function(df, parent=NULL, infector=NULL) {
+  if(is.null(parent)) {
+    tree <- Node$new("root2")
+    
+    first_infectors <- df$infector[!df$infector %in% df$v]
+    # remove duplicates
+    first_infectors <- first_infectors[!duplicated(first_infectors)]
+    
+    for(infector in first_infectors) {
+      child <- tree$AddChild(infector)
+      populate_tree(df, child, infector)
+    }
+    
+    return(tree)
+  } else {
+    for(v in df$v[df$infector == infector]) {
+      child = parent$AddChild(v)
+      populate_tree(df, child, v)
+    }
+  }
+}
+
+populate_labels <- function(tree, depth=0, child=NULL, labels=NULL) {
+  if(is.null(child)) {
+    labels = vector()
+    
+  } else {
+    
+  }
+}
+
+png("custom_plots/tree_infected.png", height=10, width=50, units="in", res=200)
+par(mfrow=c(1, 5))
+for(i in 1:5) {
+  use.inf.el <- get_infected(30, do_plot=FALSE)
+  
+  tree <- populate_tree(use.inf.el)
+  
+  library(igraph)
+  library(qgraph)
+  
+  tree.df <- ToDataFrameNetwork(tree)
+  
+  vertices <- tree.df$to
+  vertices <- prepend(vertices, "root2")
+  
+  colors = rep("orange", length(vertices))
+  colors[1] <- "black"
+  
+  g <- graph_from_data_frame(tree.df, directed=TRUE, vertices=vertices)
+  e <- get.edgelist(g, names=FALSE)
+  
+  l <- qgraph.layout.fruchtermanreingold(edgelist=e, vcount=vcount(g), niter=2000)
+  plot(g, layout=l, vertex.color=colors, vertex.size=4, vertex.label=sort(tree$Get("level"))-1, vertex.label.cex = 1)
+  #mtext("qgraph.layout.fruchtermanreingold default", side=1)
+  
+  #e <- get.edgelist(g, names=FALSE)
+  #l <- qgraph.layout.fruchtermanreingold(edgelist=e, vcount=vcount(g), area=8*(vcount(g)^2),repulse.rad=(vcount(g)^3.1))
+  #plot(g, layout=l, vertex.size=4, vertex.label=1:nrow(tree.df), vertex.label.cex = 0.6)
+  #mtext("qgraph.layout.fruchtermanreingold modified", side=1)
+
+}
+dev.off()
+```
+
+## Plotting test
+
+```{r}
+
+#Plot network
+case_data <- plot_network(
+am = am,
+day = 20,
+num.initial.cases = 1,
+prop.asym = 0.4,
+delay_shape =  1,
+delay_scale = 1.4,
+prop.ascertain = 0.9,
+presymrate = 0.2,
+R = 0.8,
+outside = 0.001,
+testing = FALSE,
+s = 333,
+isolation = FALSE,
+secondary = FALSE,
+tracing = FALSE,
+quarantine = FALSE)
+```
+
+Whats m? 468 x 468 containing the contact associations between each agent (ranges from 0-3)
+
+
+## Run a single scenario multiple times
+
+```{r}
+library(covidhm)
+library(ggplot2)
+
+res <- scenario_sim(net = am, n.sim = 20, num.initial.cases = 1,prop.asym=0.4,
+                             prop.ascertain = 0.9, cap_max_days = 70,
+                             delay_shape = 1, delay_scale = 1.4, R = 0.8, presymrate = 0.2, scenario = "nothing",
+                             testing = FALSE, outside = 0.001, distancing = 0)
+
+# Plot of raw cumulative cases
+ggplot(data=res, aes(x=week, y=cumcases,col = sim)) +
+geom_line(show.legend = FALSE, alpha=0.6, aes(group = sim)) +
+scale_y_continuous(name="Weekly number of cases") +
+  theme_bw()
+```
